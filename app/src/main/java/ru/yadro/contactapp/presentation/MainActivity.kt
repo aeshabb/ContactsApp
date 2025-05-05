@@ -1,64 +1,112 @@
 package ru.yadro.contactapp.presentation
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.IBinder
+import android.os.RemoteException
 import android.widget.Toast
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import ru.yadro.contactapp.data.ContactRepository
-import ru.yadro.contactapp.domain.usecase.GetContactsUseCase
-import ru.yadro.contactapp.ui.theme.ContactAppTheme
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import ru.yadro.contactapp.Contact
+import ru.yadro.contactapp.IContactService
+import ru.yadro.contactapp.R
+import ru.yadro.contactapp.service.ContactService
+import ru.yadro.contactapp.ui.adapter.ContactsAdapter
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
-    private lateinit var getContactsUseCase: GetContactsUseCase
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var adapter: ContactsAdapter
+    private var contactService: IContactService? = null
+    private var isBound = false
+
+    private val PERMISSIONS_REQUEST_READ_CONTACTS = 100
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            contactService = IContactService.Stub.asInterface(binder)
+            isBound = true
+            loadContactsFromService()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            contactService = null
+            isBound = false
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-        getContactsUseCase = GetContactsUseCase(ContactRepository(this))
+        recyclerView = findViewById(R.id.recyclerView)
+        recyclerView.layoutManager = LinearLayoutManager(this)
 
-        checkPermissionsAndShowContacts()
-    }
-
-    private fun checkPermissionsAndShowContacts() {
-        val readGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-        val writeGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED
-
-        if (readGranted && writeGranted) {
-            showContactsUI()
-        } else {
-            requestPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.READ_CONTACTS,
-                    Manifest.permission.WRITE_CONTACTS
-                )
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.READ_CONTACTS),
+                PERMISSIONS_REQUEST_READ_CONTACTS
             )
-        }
-    }
-
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val readGranted = permissions[Manifest.permission.READ_CONTACTS] ?: false
-        val writeGranted = permissions[Manifest.permission.WRITE_CONTACTS] ?: false
-
-        if (readGranted && writeGranted) {
-            showContactsUI()
         } else {
-            Toast.makeText(this, "Разрешения не предоставлены", Toast.LENGTH_SHORT).show()
+            bindToContactService()
         }
     }
 
-    private fun showContactsUI() {
-        val contacts = getContactsUseCase()
-        setContent {
-            ContactAppTheme {
-                ContactsScreen(contacts)
+    private fun bindToContactService() {
+        val intent = Intent(this, ContactService::class.java)
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSIONS_REQUEST_READ_CONTACTS && grantResults.isNotEmpty()
+            && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            bindToContactService()
+        } else {
+            Toast.makeText(
+                this,
+                "Разрешение на чтение контактов не предоставлено",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private fun loadContactsFromService() {
+        Thread {
+            try {
+                val result = contactService?.contacts
+                val contacts = result?.map { Contact(it.name, it.phone) } ?: emptyList()
+                runOnUiThread {
+                    adapter = ContactsAdapter(contacts)
+                    recyclerView.adapter = adapter
+                }
+            } catch (e: RemoteException) {
+                e.printStackTrace()
             }
+        }.start()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isBound) {
+            unbindService(serviceConnection)
+            isBound = false
         }
     }
 }

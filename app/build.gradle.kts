@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("kotlin-parcelize")
 }
 
 android {
@@ -36,11 +37,21 @@ android {
     }
     buildFeatures {
         compose = true
+        aidl = true
+    }
+    sourceSets {
+        getByName("main") {
+            aidl.srcDirs("src/main/aidl")
+        }
     }
 }
 
 dependencies {
 
+    implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.cardview)
+    implementation(libs.material)
+    implementation(libs.androidx.core.ktx.v1120)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
