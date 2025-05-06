@@ -23,11 +23,10 @@ class ContactsAdapter(private val contacts: List<Contact>) :
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.name.text = contacts[position].name
-        holder.phone.text = contacts[position].phone
+        val contact = contacts[position]
+        holder.name.text = contact.name
+        holder.phone.text = contact.phone
     }
 
     override fun getItemCount() = contacts.size
-
-
 }

@@ -26,6 +26,19 @@
         android:padding="8dp"
         android:clipToPadding="false" />
 
+    <TextView
+        android:id="@+id/emptyView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Контактов нет"
+        android:textSize="16sp"
+        android:layout_gravity="center"
+        android:visibility="gone"
+        android:layout_marginTop="16dp"
+        />
+
+
+
     <Button
         android:id="@+id/btnDeleteDuplicates"
         android:layout_width="match_parent"

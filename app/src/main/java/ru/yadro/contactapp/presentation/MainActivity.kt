@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.os.RemoteException
 import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -26,6 +27,7 @@ import ru.yadro.contactapp.ui.adapter.ContactsAdapter
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recyclerView: RecyclerView
+    private lateinit var emptyView: TextView
     private lateinit var adapter: ContactsAdapter
     private lateinit var btnDeleteDuplicates: Button
     private var contactService: IContactService? = null
@@ -52,6 +54,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         recyclerView = findViewById(R.id.recyclerView)
+        emptyView = findViewById(R.id.emptyView)
         btnDeleteDuplicates = findViewById(R.id.btnDeleteDuplicates)
 
         recyclerView.layoutManager = LinearLayoutManager(this)
@@ -139,9 +142,17 @@ class MainActivity : AppCompatActivity() {
             try {
                 val result = contactService?.contacts
                 val contacts = result?.map { Contact(it.name, it.phone) } ?: emptyList()
+
                 runOnUiThread {
-                    adapter = ContactsAdapter(contacts)
-                    recyclerView.adapter = adapter
+                    if (contacts.isEmpty()) {
+                        recyclerView.visibility = RecyclerView.GONE
+                        emptyView.visibility = TextView.VISIBLE
+                    } else {
+                        recyclerView.visibility = RecyclerView.VISIBLE
+                        emptyView.visibility = TextView.GONE
+                        adapter = ContactsAdapter(contacts)
+                        recyclerView.adapter = adapter
+                    }
                 }
             } catch (e: RemoteException) {
                 e.printStackTrace()

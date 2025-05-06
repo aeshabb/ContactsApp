@@ -14,27 +14,37 @@ import ru.yadro.contactapp.IDeleteCallback
 class ContactService : Service() {
 
     private val binder = object : IContactService.Stub() {
+
         override fun getContacts(): MutableList<Contact> {
             val contacts = mutableListOf<Contact>()
 
             if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.READ_CONTACTS)
-                != PackageManager.PERMISSION_GRANTED) {
-                return contacts
-            }
+                != PackageManager.PERMISSION_GRANTED
+            ) return contacts
 
-            val contentResolver = applicationContext.contentResolver
-            val cursor = contentResolver.query(
+            val resolver = contentResolver
+            val cursor = resolver.query(
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                null, null, null, null
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER,
+                    ContactsContract.CommonDataKinds.Phone.CONTACT_ID
+                ),
+                null, null, null
             )
 
             cursor?.use {
                 val nameIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
                 val numberIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val idIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
 
                 while (it.moveToNext()) {
                     val name = it.getString(nameIdx) ?: continue
                     val phone = it.getString(numberIdx) ?: continue
+                    val contactId = it.getString(idIdx) ?: continue
+
+                    if (isSimContact(contactId)) continue
+
                     contacts.add(Contact(name, phone))
                 }
             }
@@ -51,7 +61,7 @@ class ContactService : Service() {
             }
 
             try {
-                val resolver = applicationContext.contentResolver
+                val resolver = contentResolver
                 val allContacts = getContacts()
 
                 val grouped = allContacts.groupBy {
@@ -60,6 +70,7 @@ class ContactService : Service() {
                     "$normalizedName|$normalizedPhone"
                 }
 
+                val deletedIds = mutableSetOf<String>()
                 var deletedCount = 0
 
                 for ((_, duplicates) in grouped) {
@@ -83,6 +94,9 @@ class ContactService : Service() {
                                         it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
                                     )
 
+                                    if (deletedIds.contains(contactId)) continue
+                                    if (isSimContact(contactId)) continue
+
                                     val phoneCursor = resolver.query(
                                         ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                                         arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
@@ -91,21 +105,26 @@ class ContactService : Service() {
                                         null
                                     )
 
-                                    var actualNumber: String? = null
+                                    var matched = false
                                     phoneCursor?.use { pc ->
-                                        if (pc.moveToFirst()) {
-                                            actualNumber = pc.getString(
+                                        while (pc.moveToNext()) {
+                                            val actualNumber = pc.getString(
                                                 pc.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
                                             )
+                                            if (normalizePhoneNumber(actualNumber) == normalizedPhone) {
+                                                matched = true
+                                                break
+                                            }
                                         }
                                     }
 
-                                    if (actualNumber != null && normalizePhoneNumber(actualNumber!!) == normalizedPhone) {
+                                    if (matched) {
                                         resolver.delete(
                                             ContactsContract.RawContacts.CONTENT_URI,
                                             "${ContactsContract.RawContacts.CONTACT_ID} = ?",
                                             arrayOf(contactId)
                                         )
+                                        deletedIds.add(contactId)
                                         deletedCount++
                                         break
                                     }
@@ -138,10 +157,28 @@ class ContactService : Service() {
         }
     }
 
+    private fun isSimContact(contactId: String): Boolean {
+        val resolver = contentResolver
+        val cursor = resolver.query(
+            ContactsContract.RawContacts.CONTENT_URI,
+            arrayOf(ContactsContract.RawContacts.ACCOUNT_TYPE),
+            "${ContactsContract.RawContacts.CONTACT_ID} = ?",
+            arrayOf(contactId),
+            null
+        )
+
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val accountType = it.getString(
+                    it.getColumnIndexOrThrow(ContactsContract.RawContacts.ACCOUNT_TYPE)
+                )
+                return accountType?.lowercase()?.contains("sim") == true || accountType?.lowercase()?.contains("sd") == true
+            }
+        }
+        return false
+    }
+
     override fun onBind(intent: Intent?): IBinder {
         return binder
     }
-
-
-
 }
