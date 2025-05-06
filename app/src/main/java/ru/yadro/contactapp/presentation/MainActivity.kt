@@ -21,6 +21,7 @@ import ru.yadro.contactapp.Contact
 import ru.yadro.contactapp.IContactService
 import ru.yadro.contactapp.IDeleteCallback
 import ru.yadro.contactapp.R
+import ru.yadro.contactapp.model.ContactListItem
 import ru.yadro.contactapp.service.ContactService
 import ru.yadro.contactapp.ui.adapter.ContactsAdapter
 
@@ -133,8 +134,19 @@ class MainActivity : AppCompatActivity() {
         ) {
             deleteDuplicates()
         } else {
-            Toast.makeText(this, "Необходимые разрешения не предоставлены", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Необходимые разрешения не предоставлены", Toast.LENGTH_SHORT)
+                .show()
         }
+    }
+
+    private fun groupContactsByInitial(contacts: List<Contact>): List<ContactListItem> {
+        return contacts
+            .sortedBy { it.name.lowercase() }
+            .groupBy { it.name.first().uppercaseChar().toString() }
+            .flatMap { (initial, group) ->
+                listOf(ContactListItem.Header(initial)) +
+                        group.map { ContactListItem.ContactItem(it) }
+            }
     }
 
     private fun loadContactsFromService() {
@@ -142,15 +154,16 @@ class MainActivity : AppCompatActivity() {
             try {
                 val result = contactService?.contacts
                 val contacts = result?.map { Contact(it.name, it.phone) } ?: emptyList()
+                val groupedItems = groupContactsByInitial(contacts)
 
                 runOnUiThread {
-                    if (contacts.isEmpty()) {
+                    if (groupedItems.isEmpty()) {
                         recyclerView.visibility = RecyclerView.GONE
                         emptyView.visibility = TextView.VISIBLE
                     } else {
                         recyclerView.visibility = RecyclerView.VISIBLE
                         emptyView.visibility = TextView.GONE
-                        adapter = ContactsAdapter(contacts)
+                        adapter = ContactsAdapter(groupedItems)
                         recyclerView.adapter = adapter
                     }
                 }
@@ -159,6 +172,7 @@ class MainActivity : AppCompatActivity() {
             }
         }.start()
     }
+
 
     override fun onDestroy() {
         super.onDestroy()
