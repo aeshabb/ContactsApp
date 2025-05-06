@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">ContactApp</string>
+    <string name="contact_app">Contact App</string>
+    <string name="deleteButton">Удалить одинаковые контакты</string>
 </resources>

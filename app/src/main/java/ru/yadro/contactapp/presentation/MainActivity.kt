@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.IBinder
 import android.os.RemoteException
+import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -17,6 +18,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import ru.yadro.contactapp.Contact
 import ru.yadro.contactapp.IContactService
+import ru.yadro.contactapp.IDeleteCallback
 import ru.yadro.contactapp.R
 import ru.yadro.contactapp.service.ContactService
 import ru.yadro.contactapp.ui.adapter.ContactsAdapter
@@ -25,10 +27,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: ContactsAdapter
+    private lateinit var btnDeleteDuplicates: Button
     private var contactService: IContactService? = null
     private var isBound = false
 
     private val PERMISSIONS_REQUEST_READ_CONTACTS = 100
+    private val PERMISSIONS_REQUEST_WRITE_CONTACTS = 101
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -48,7 +52,13 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         recyclerView = findViewById(R.id.recyclerView)
+        btnDeleteDuplicates = findViewById(R.id.btnDeleteDuplicates)
+
         recyclerView.layoutManager = LinearLayoutManager(this)
+
+        btnDeleteDuplicates.setOnClickListener {
+            checkAndRequestWritePermission()
+        }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS)
             != PackageManager.PERMISSION_GRANTED
@@ -61,6 +71,43 @@ class MainActivity : AppCompatActivity() {
         } else {
             bindToContactService()
         }
+    }
+
+    private fun checkAndRequestWritePermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CONTACTS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.WRITE_CONTACTS),
+                PERMISSIONS_REQUEST_WRITE_CONTACTS
+            )
+        } else {
+            deleteDuplicates()
+        }
+    }
+
+    private fun deleteDuplicates() {
+        Thread {
+            try {
+                contactService?.deleteDuplicateContacts(object : IDeleteCallback.Stub() {
+                    override fun onSuccess(message: String?) {
+                        runOnUiThread {
+                            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                            loadContactsFromService()
+                        }
+                    }
+
+                    override fun onError(error: String?) {
+                        runOnUiThread {
+                            Toast.makeText(this@MainActivity, error, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                })
+            } catch (e: RemoteException) {
+                e.printStackTrace()
+            }
+        }.start()
     }
 
     private fun bindToContactService() {
@@ -78,12 +125,12 @@ class MainActivity : AppCompatActivity() {
             && grantResults[0] == PackageManager.PERMISSION_GRANTED
         ) {
             bindToContactService()
+        } else if (requestCode == PERMISSIONS_REQUEST_WRITE_CONTACTS && grantResults.isNotEmpty()
+            && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            deleteDuplicates()
         } else {
-            Toast.makeText(
-                this,
-                "Разрешение на чтение контактов не предоставлено",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Необходимые разрешения не предоставлены", Toast.LENGTH_SHORT).show()
         }
     }
 
